@@ -11,10 +11,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "device.h"
+#include "StrategizerInterface.h"
 #include "omptarget.h"
 #include "private.h"
 #include "rtl.h"
-#include "StrategizerInterface.h"
 
 #include <cassert>
 #include <climits>
@@ -539,11 +539,14 @@ int32_t DeviceTy::deleteData(void *TgtPtrBegin, int32_t Kind) {
 
 // helper function to check if we should do strategized data transfer
 /// dummy entry point to tst interface
-  int task_entry(kmp_int32 gtid)
-  {
-    printf("task_entry happened\n");
-      return 0;
-  }
+int task_entry(kmp_int32 gtid) {
+  printf("task_entry happened\n");
+  return 0;
+}
+void my_task_function(void *data) {
+  int task_id = *((int *)data);
+  printf("Executing task with ID: %d\n", task_id);
+}
 // Submit data to device
 int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
                              AsyncInfoTy &AsyncInfo) {
@@ -553,11 +556,19 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
   // int x = __kmpc_get_hardware_thread_id_in_block();
   int x = omp_get_device_num();
   kmp_int32 gtid = __kmpc_global_thread_num(NULL);
-  int y = __kmpc_omp_taskwait(NULL,gtid);
-  auto z = test(1,2);
+  printf("I will create a tsak now\n");
+  int data1 = 10;
+  int data2 = 20;
+  kmp_task_t task_id1;
+  kmp_depend_info_t dep_info1 = {0, 0, NULL};
+  
+  // Create a task with ID 1
+  __kmpc_omp_task_with_deps(NULL, gtid, &task_id1, 1, &dep_info1, 0, &dep_info1);
+
+  int y = __kmpc_omp_taskwait(NULL, gtid);
+  auto z = test(1, 2);
   printf("z = %d\n", z);
   printf("y = %d\n", y);
-  // kmp_task_t *proxy_task = __kmpc_omp_task_alloc(NULL,gtid,17,sizeof(kmp_task_t),0,&task_entry);
 
   printf("The value of x = %d\n", x);
 
@@ -576,7 +587,7 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
          DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin), Size,
          (HT && HT->HstPtrName) ? getNameFromMapping(HT->HstPtrName).c_str()
                                 : "unknown");
-  }
+    }
 
   if (!AsyncInfo || !RTL->data_submit_async || !RTL->synchronize)
     return RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
@@ -587,8 +598,8 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
 // Retrieve data from device
 int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
                                int64_t Size, AsyncInfoTy &AsyncInfo) {
-  printf("retrieveData from %p to %p with size %d\n\n", HstPtrBegin, TgtPtrBegin,
-         Size);
+  printf("retrieveData from %p to %p with size %d\n\n", HstPtrBegin,
+         TgtPtrBegin, Size);
   if (getInfoLevel() & OMP_INFOTYPE_DATA_TRANSFER) {
     HDTTMapAccessorTy HDTTMap = HostDataToTargetMap.getExclusiveAccessor();
     LookupResult LR = lookupMapping(HDTTMap, HstPtrBegin, Size);
@@ -610,8 +621,7 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
 // Copy data from current device to destination device directly
 int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
                                int64_t Size, AsyncInfoTy &AsyncInfo) {
-  printf("ExchangeData from %p to %p with size %d\n\n", SrcPtr, DstPtr,
-         Size);
+  printf("ExchangeData from %p to %p with size %d\n\n", SrcPtr, DstPtr, Size);
   if (!AsyncInfo || !RTL->data_exchange_async || !RTL->synchronize) {
     assert(RTL->data_exchange && "RTL->data_exchange is nullptr");
     return RTL->data_exchange(RTLDeviceID, SrcPtr, DstDev.RTLDeviceID, DstPtr,
