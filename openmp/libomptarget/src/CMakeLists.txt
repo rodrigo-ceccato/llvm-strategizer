@@ -11,12 +11,13 @@
 ##===----------------------------------------------------------------------===##
 
 libomptarget_say("Building offloading runtime library libomptarget.")
+message("Looking for header in...... ${CMAKE_CURRENT_SOURCE_DIR}/../DeviceRTL/include")
 
 add_llvm_library(omptarget
   SHARED
 
   api.cpp
-  device.cpp
+  device.cpp # we must link against DeviceRTL to use KMPC interface
   interface.cpp
   interop.cpp
   omptarget.cpp
@@ -25,7 +26,7 @@ add_llvm_library(omptarget
   LegacyAPI.cpp
 
   ADDITIONAL_HEADER_DIRS
-  ${LIBOMPTARGET_INCLUDE_DIR}
+  # ${CMAKE_CURRENT_SOURCE_DIR}/../DeviceRTL/include/Interface.h
 
   LINK_COMPONENTS
   Support
@@ -33,10 +34,15 @@ add_llvm_library(omptarget
 
   LINK_LIBS
   PRIVATE
+  omp
   "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports"
   NO_INSTALL_RPATH
 )
-target_include_directories(omptarget PRIVATE ${LIBOMPTARGET_INCLUDE_DIR})
+target_include_directories(omptarget PRIVATE ${LIBOMPTARGET_INCLUDE_DIR} 
+# include DeviceRTL headers
+${CMAKE_CURRENT_SOURCE_DIR}/../DeviceRTL/include
+
+)
 
 # libomptarget.so needs to be aware of where the plugins live as they
 # are now separated in the build directory.

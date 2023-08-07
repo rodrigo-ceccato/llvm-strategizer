@@ -89,7 +89,7 @@ endif()
 
 pythonize_bool(LIBOMPTARGET_OMPT_SUPPORT)
 
-set(LIBOMPTARGET_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set(LIBOMPTARGET_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../runtime/src)
 message(STATUS "OpenMP tools dir in libomptarget: ${LIBOMP_OMP_TOOLS_INCLUDE_DIR}")
 include_directories(${LIBOMP_OMP_TOOLS_INCLUDE_DIR})
 

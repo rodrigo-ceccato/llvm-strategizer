@@ -115,6 +115,14 @@ typedef struct kmp_depend_info {
     bool mtx : 1;
   } flags;
 } kmp_depend_info_t;
+struct kmp_task;
+typedef kmp_int32 (* kmp_routine_entry_t)( kmp_int32, struct kmp_task * );
+typedef struct kmp_task {                   /* GEH: Shouldn't this be aligned somehow? */
+    void *              shareds;            /**< pointer to block of pointers to shared vars   */
+    kmp_routine_entry_t routine;            /**< pointer to routine to call for executing task */
+    kmp_int32           part_id;            /**< part id for the task                          */
+} kmp_task_t;
+
 // functions that extract info from libomp; keep in sync
 int omp_get_default_device(void) __attribute__((weak));
 int32_t __kmpc_global_thread_num(void *) __attribute__((weak));
@@ -126,6 +134,14 @@ void __kmpc_omp_wait_deps(ident_t *loc_ref, kmp_int32 gtid, kmp_int32 ndeps,
 void **__kmpc_omp_get_target_async_handle_ptr(kmp_int32 gtid)
     __attribute__((weak));
 bool __kmpc_omp_has_task_team(kmp_int32 gtid) __attribute__((weak));
+int omp_get_device_num(void) __attribute__((weak));
+kmp_task_t *__kmpc_omp_task_alloc(ident_t *loc_ref, kmp_int32 gtid,
+                                  kmp_int32 flags, size_t sizeof_kmp_task_t,
+                                  size_t sizeof_shareds,
+                                  kmp_routine_entry_t task_entry)
+    __attribute__((weak));
+
+
 // Invalid GTID as defined by libomp; keep in sync
 #define KMP_GTID_DNE (-2)
 #ifdef __cplusplus

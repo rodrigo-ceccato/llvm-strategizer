@@ -88,6 +88,7 @@ int32_t __kmpc_omp_taskyield(IdentTy *Loc, uint32_t TId, int) {
 }
 
 int32_t __kmpc_omp_taskwait(IdentTy *Loc, uint32_t TId) {
+  printf("Call to __kmpc_omp_taskwait\n");
   FunctionTracingRAII();
   return 0;
 }

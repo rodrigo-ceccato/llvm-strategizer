@@ -14,6 +14,7 @@
 #include "omptarget.h"
 #include "private.h"
 #include "rtl.h"
+#include "StrategizerInterface.h"
 
 #include <cassert>
 #include <climits>
@@ -536,9 +537,34 @@ int32_t DeviceTy::deleteData(void *TgtPtrBegin, int32_t Kind) {
   return RTL->data_delete(RTLDeviceID, TgtPtrBegin, Kind);
 }
 
+// helper function to check if we should do strategized data transfer
+/// dummy entry point to tst interface
+  int task_entry(kmp_int32 gtid)
+  {
+    printf("task_entry happened\n");
+      return 0;
+  }
 // Submit data to device
 int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
                              AsyncInfoTy &AsyncInfo) {
+  printf("submitData from %p to %p with size %d\n\n", HstPtrBegin, TgtPtrBegin,
+         Size);
+  // If Auto Strategizer is on:
+  // int x = __kmpc_get_hardware_thread_id_in_block();
+  int x = omp_get_device_num();
+  kmp_int32 gtid = __kmpc_global_thread_num(NULL);
+  int y = __kmpc_omp_taskwait(NULL,gtid);
+  auto z = test(1,2);
+  printf("z = %d\n", z);
+  printf("y = %d\n", y);
+  // kmp_task_t *proxy_task = __kmpc_omp_task_alloc(NULL,gtid,17,sizeof(kmp_task_t),0,&task_entry);
+
+  printf("The value of x = %d\n", x);
+
+  // if Size >> auto strategizer thresheold size, call AutoS
+  // we have to wait for autoS tasks to finish
+
+  // else call data_submit
   if (getInfoLevel() & OMP_INFOTYPE_DATA_TRANSFER) {
     HDTTMapAccessorTy HDTTMap = HostDataToTargetMap.getExclusiveAccessor();
     LookupResult LR = lookupMapping(HDTTMap, HstPtrBegin, Size);
@@ -561,6 +587,8 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
 // Retrieve data from device
 int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
                                int64_t Size, AsyncInfoTy &AsyncInfo) {
+  printf("retrieveData from %p to %p with size %d\n\n", HstPtrBegin, TgtPtrBegin,
+         Size);
   if (getInfoLevel() & OMP_INFOTYPE_DATA_TRANSFER) {
     HDTTMapAccessorTy HDTTMap = HostDataToTargetMap.getExclusiveAccessor();
     LookupResult LR = lookupMapping(HDTTMap, HstPtrBegin, Size);
@@ -582,6 +610,8 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
 // Copy data from current device to destination device directly
 int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
                                int64_t Size, AsyncInfoTy &AsyncInfo) {
+  printf("ExchangeData from %p to %p with size %d\n\n", SrcPtr, DstPtr,
+         Size);
   if (!AsyncInfo || !RTL->data_exchange_async || !RTL->synchronize) {
     assert(RTL->data_exchange && "RTL->data_exchange is nullptr");
     return RTL->data_exchange(RTLDeviceID, SrcPtr, DstDev.RTLDeviceID, DstPtr,
