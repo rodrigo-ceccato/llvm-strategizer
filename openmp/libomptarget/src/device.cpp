@@ -543,9 +543,10 @@ int task_entry(kmp_int32 gtid) {
   printf("task_entry happened\n");
   return 0;
 }
-void my_task_function(void *data) {
-  int task_id = *((int *)data);
+int my_task_entry(kmp_int32 gtid, kmp_task_t *task) {
+  int task_id = gtid;
   printf("Executing task with ID: %d\n", task_id);
+  return 3;
 }
 // Submit data to device
 int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
@@ -556,19 +557,22 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
   // int x = __kmpc_get_hardware_thread_id_in_block();
   int x = omp_get_device_num();
   kmp_int32 gtid = __kmpc_global_thread_num(NULL);
-  printf("I will create a tsak now\n");
+  printf("I will create a task now\n");
   int data1 = 10;
   int data2 = 20;
-  kmp_task_t task_id1;
   kmp_depend_info_t dep_info1 = {0, 0, NULL};
-  
-  // Create a task with ID 1
-  __kmpc_omp_task_with_deps(NULL, gtid, &task_id1, 1, &dep_info1, 0, &dep_info1);
+
+  // Create a task
+  ident_t loc = {0, 0, 0, 0, ";libomptarget;libomptarget;0;0;;"};
+  kmp_task_t *new_task =
+      __kmpc_omp_task_alloc(&loc, gtid, 1, (size_t)0 * sizeof(void *),
+                            (size_t)0, (kmp_routine_entry_t)my_task_entry);
+  __kmpc_omp_task_with_deps(NULL, gtid, new_task, 1, &dep_info1, 0, &dep_info1);
 
   int y = __kmpc_omp_taskwait(NULL, gtid);
   auto z = test(1, 2);
   printf("z = %d\n", z);
-  printf("y = %d\n", y);
+  printf("return of taskwait = %d\n", y);
 
   printf("The value of x = %d\n", x);
 
