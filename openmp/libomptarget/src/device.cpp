@@ -544,8 +544,17 @@ int task_entry(kmp_int32 gtid) {
   return 0;
 }
 int my_task_entry(kmp_int32 gtid, kmp_task_t *task) {
-  int task_id = gtid;
-  printf("Executing task with ID: %d\n", task_id);
+  printf("Executing task with thread: %d\n", gtid);
+  printf("task_entry happened <-- now sleeping\n");
+  //sleep for 2 seconds
+  std::this_thread::sleep_for(std::chrono::seconds(5));
+  printf("task_entry happened <-- now wake up\n");
+
+  return 3;
+}
+int my_task_entry2(kmp_int32 gtid, kmp_task_t *task) {
+  printf("Executing task with thread: %d\n", gtid);
+  printf("task_entry2 happened\n");
   return 3;
 }
 // Submit data to device
@@ -555,26 +564,51 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
          Size);
   // If Auto Strategizer is on:
   // int x = __kmpc_get_hardware_thread_id_in_block();
-  int x = omp_get_device_num();
-  kmp_int32 gtid = __kmpc_global_thread_num(NULL);
   printf("I will create a task now\n");
-  int data1 = 10;
-  int data2 = 20;
-  kmp_depend_info_t dep_info1 = {0, 0, NULL};
+  kmp_int32 gtid = __kmpc_global_thread_num(NULL);
 
   // Create a task
-  ident_t loc = {0, 0, 0, 0, ";libomptarget;libomptarget;0;0;;"};
-  kmp_task_t *new_task =
-      __kmpc_omp_task_alloc(&loc, gtid, 1, (size_t)0 * sizeof(void *),
+  // ident_t loc = {0, 0, 0, 0, ";libomptarget;libomptarget;0;0;;"};
+  // ident_t loc = {0,0,0,0, nullptr};
+
+  kmp_intptr_t bla = (kmp_intptr_t)malloc(10);
+  kmp_intptr_t bla_2 = (kmp_intptr_t)malloc(10);
+  kmp_depend_info_t dep_info1[2];
+  dep_info1[0].base_addr = bla;
+  dep_info1[0].len = 10;
+  dep_info1[0].flags.in = 0;
+  dep_info1[0].flags.out = 1;
+  dep_info1[0].flags.mtx = 0;
+
+  dep_info1[1].base_addr = bla_2;
+  dep_info1[1].len = 10;
+  dep_info1[1].flags.in = 0;
+  dep_info1[1].flags.out = 1;
+  dep_info1[1].flags.mtx = 0;
+
+
+  kmp_depend_info_t dep_info2;
+  dep_info2.base_addr = bla;
+  dep_info2.len = 10;
+  dep_info2.flags.in = 1;
+  dep_info2.flags.out = 0;
+  dep_info2.flags.mtx = 0;
+
+  kmp_task_t *my_task_1 =
+      __kmpc_omp_task_alloc(NULL, gtid, 1, (size_t)0 * sizeof(void *),
                             (size_t)0, (kmp_routine_entry_t)my_task_entry);
-  __kmpc_omp_task_with_deps(NULL, gtid, new_task, 1, &dep_info1, 0, &dep_info1);
+
+  kmp_task_t *my_task_2 =
+      __kmpc_omp_task_alloc(NULL, gtid, 1, (size_t)0 * sizeof(void *),
+                            (size_t)0, (kmp_routine_entry_t)my_task_entry2);
+
+  __kmpc_omp_task_with_deps(NULL, gtid, my_task_1, 0, NULL, 0, NULL);
+  __kmpc_omp_task_with_deps(NULL, gtid, my_task_2, 0, NULL, 0, NULL);
 
   int y = __kmpc_omp_taskwait(NULL, gtid);
   auto z = test(1, 2);
   printf("z = %d\n", z);
   printf("return of taskwait = %d\n", y);
-
-  printf("The value of x = %d\n", x);
 
   // if Size >> auto strategizer thresheold size, call AutoS
   // we have to wait for autoS tasks to finish
