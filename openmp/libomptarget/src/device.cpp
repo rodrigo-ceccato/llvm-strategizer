@@ -567,32 +567,38 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
   printf("I will create a task now\n");
   kmp_int32 gtid = __kmpc_global_thread_num(NULL);
 
-  // Create a task
-  // ident_t loc = {0, 0, 0, 0, ";libomptarget;libomptarget;0;0;;"};
-  // ident_t loc = {0,0,0,0, nullptr};
-
+  // Set dependencies
   kmp_intptr_t bla = (kmp_intptr_t)malloc(10);
   kmp_intptr_t bla_2 = (kmp_intptr_t)malloc(10);
   kmp_depend_info_t dep_info1[2];
   dep_info1[0].base_addr = bla;
-  dep_info1[0].len = 10;
+  dep_info1[0].len = 9;
   dep_info1[0].flags.in = 0;
   dep_info1[0].flags.out = 1;
   dep_info1[0].flags.mtx = 0;
+  dep_info1[0].flag = 2;
 
   dep_info1[1].base_addr = bla_2;
-  dep_info1[1].len = 10;
+  dep_info1[1].len = 9;
   dep_info1[1].flags.in = 0;
   dep_info1[1].flags.out = 1;
   dep_info1[1].flags.mtx = 0;
+  dep_info1[1].flag = 0x2;
 
 
-  kmp_depend_info_t dep_info2;
-  dep_info2.base_addr = bla;
-  dep_info2.len = 10;
-  dep_info2.flags.in = 1;
-  dep_info2.flags.out = 0;
-  dep_info2.flags.mtx = 0;
+  kmp_depend_info_t dep_info2[2];
+  dep_info2[0].base_addr = bla;
+  dep_info2[0].len = 10;
+  dep_info2[0].flags.in = 1;
+  dep_info2[0].flags.out = 0;
+  dep_info2[0].flags.mtx = 0x2;
+
+  dep_info2[1].base_addr = bla_2;
+  dep_info2[1].len = 10;
+  dep_info2[1].flags.in = 1;
+  dep_info2[1].flags.out = 0;
+  dep_info2[1].flags.mtx = 1;
+  dep_info2[1].flag = 3;
 
   kmp_task_t *my_task_1 =
       __kmpc_omp_task_alloc(NULL, gtid, 1, (size_t)0 * sizeof(void *),
@@ -604,11 +610,11 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
 
   // hidden helper task
   kmp_task_t *my_task_2 = __kmpc_omp_target_task_alloc_v2(
-      NULL, gtid, (kmp_int32)1, (size_t)0 , (size_t)0,
+      NULL, gtid, (kmp_int32)0, (size_t)0 , (size_t)0,
       (kmp_routine_entry_t) (my_task_entry2), (kmp_int64)-1);
 
 
-  __kmpc_omp_task_with_deps(NULL, gtid, my_task_1, 1, dep_info1 , 0, NULL);
+  __kmpc_omp_task_with_deps(NULL, gtid, my_task_1, 2, dep_info1 , 0, NULL);
   // __kmpc_omp_task_with_deps(NULL, gtid, my_task_2, 1, &dep_info2, 0, NULL);
 
   __kmpc_omp_taskwait(NULL, gtid);

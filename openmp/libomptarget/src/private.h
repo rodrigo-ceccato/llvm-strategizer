@@ -105,16 +105,25 @@ extern "C" {
  */
 typedef int kmp_int32;
 typedef intptr_t kmp_intptr_t;
+typedef unsigned char kmp_uint8;
 // Compiler sends us this info:
+// Updated with kmp.h version
 typedef struct kmp_depend_info {
   kmp_intptr_t base_addr;
   size_t len;
-  struct {
-    bool in : 1;
-    bool out : 1;
-    bool mtx : 1;
-  } flags;
+  union {
+    kmp_uint8 flag; // flag as an unsigned char
+    struct { // flag as a set of 8 bits
+      unsigned in : 1;
+      unsigned out : 1;
+      unsigned mtx : 1;
+      unsigned set : 1;
+      unsigned unused : 3;
+      unsigned all : 1;
+    } flags;
+  };
 } kmp_depend_info_t;
+
 typedef int64_t kmp_int64;
 struct kmp_task;
 typedef kmp_int32 (* kmp_routine_entry_t)( kmp_int32, struct kmp_task * );
