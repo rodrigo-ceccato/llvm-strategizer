@@ -31,12 +31,22 @@ typedef char kmp_int8;
 // TODO: check if we need this definition here
 typedef unsigned char kmp_uint8;
 
+typedef int64_t kmp_int64;
+
 int __kmpc_omp_taskwait(ident_t *loc_ref, kmp_int32 gtid) __attribute__((weak));
 
 kmp_int32 __kmpc_omp_task_with_deps(
     ident_t *loc_ref, kmp_int32 gtid, kmp_task_t *new_task, kmp_int32 ndeps,
     kmp_depend_info_t *dep_list, kmp_int32 ndeps_noalias,
     kmp_depend_info_t *noalias_dep_list) __attribute__((weak));
+
+// TODO: check why just imported the overloaded version did not work
+kmp_task_t *
+__kmpc_omp_target_task_alloc_v2(ident_t *loc_ref, kmp_int32 gtid, kmp_int32 flags,
+                             size_t sizeof_kmp_task_t, size_t sizeof_shareds,
+                             kmp_routine_entry_t task_entry,
+                             kmp_int64 device_id) __attribute__((weak));
+
 
 #ifdef __cplusplus
 } // extern "C"

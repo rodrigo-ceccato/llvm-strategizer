@@ -598,17 +598,21 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
       __kmpc_omp_task_alloc(NULL, gtid, 1, (size_t)0 * sizeof(void *),
                             (size_t)0, (kmp_routine_entry_t)my_task_entry);
 
-  kmp_task_t *my_task_2 =
-      __kmpc_omp_task_alloc(NULL, gtid, 1, (size_t)0 * sizeof(void *),
-                            (size_t)0, (kmp_routine_entry_t)my_task_entry2);
+  // kmp_task_t *my_task_2 =
+  //     __kmpc_omp_task_alloc(NULL, gtid, 1, (size_t)0 * sizeof(void *),
+  //                           (size_t)0, (kmp_routine_entry_t)my_task_entry2);
 
-  __kmpc_omp_task_with_deps(NULL, gtid, my_task_1, 0, NULL, 0, NULL);
-  __kmpc_omp_task_with_deps(NULL, gtid, my_task_2, 0, NULL, 0, NULL);
+  // hidden helper task
+  kmp_task_t *my_task_2 = __kmpc_omp_target_task_alloc_v2(
+      NULL, gtid, (kmp_int32)1, (size_t)0 , (size_t)0,
+      (kmp_routine_entry_t) (my_task_entry2), (kmp_int64)-1);
 
-  int y = __kmpc_omp_taskwait(NULL, gtid);
+
+  __kmpc_omp_task_with_deps(NULL, gtid, my_task_1, 1, dep_info1 , 0, NULL);
+  // __kmpc_omp_task_with_deps(NULL, gtid, my_task_2, 1, &dep_info2, 0, NULL);
+
+  __kmpc_omp_taskwait(NULL, gtid);
   auto z = test(1, 2);
-  printf("z = %d\n", z);
-  printf("return of taskwait = %d\n", y);
 
   // if Size >> auto strategizer thresheold size, call AutoS
   // we have to wait for autoS tasks to finish

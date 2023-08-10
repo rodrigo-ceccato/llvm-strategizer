@@ -115,6 +115,7 @@ typedef struct kmp_depend_info {
     bool mtx : 1;
   } flags;
 } kmp_depend_info_t;
+typedef int64_t kmp_int64;
 struct kmp_task;
 typedef kmp_int32 (* kmp_routine_entry_t)( kmp_int32, struct kmp_task * );
 typedef struct kmp_task {                   /* GEH: Shouldn't this be aligned somehow? */
