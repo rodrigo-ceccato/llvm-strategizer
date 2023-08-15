@@ -12,6 +12,7 @@
 
 #include "device.h"
 #include "StrategizerInterface.h"
+#include "autoStrategizer.hpp"
 #include "omptarget.h"
 #include "private.h"
 #include "rtl.h"
@@ -537,91 +538,198 @@ int32_t DeviceTy::deleteData(void *TgtPtrBegin, int32_t Kind) {
   return RTL->data_delete(RTLDeviceID, TgtPtrBegin, Kind);
 }
 
-// helper function to check if we should do strategized data transfer
-/// dummy entry point to tst interface
-int task_entry(kmp_int32 gtid) {
-  printf("task_entry happened\n");
+struct mem_task_args_struct {
+  void *dst;
+  void *src;
+  size_t size;
+  size_t dst_offset;
+  size_t src_offset;
+  int dst_device_num;
+  int src_device_num;
+
+} typedef mem_task_args_struct;
+
+struct kmpc_task_t_with_privates {
+  kmp_task_t task;
+  mem_task_args_struct mem_task_args;
+} typedef kmpc_task_t_with_privates;
+
+// Execute a memory operation for the Strategizer.
+int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
+
+  auto local_gtid = __kmpc_global_thread_num(NULL);
+  printf("Executing memory task kernel with thread: %d\n", local_gtid,
+         task->mem_task_args.size);
+
+  auto mta = task->mem_task_args;
+  // Print source and destination information from mta
+  printf("[AS] Source ID: %p, destination ID: %p\n", mta.src_device_num,
+         mta.dst_device_num);
+
+  omp_target_memcpy(
+      mta.dst,                      // mem_ptr[a_dep->dest],      // dst
+      mta.src,                      // mem_ptr[a_dep->orig],      // src
+      mta.size * sizeof(int),       // a_dep->size * sizeof(int), // length
+      mta.dst_offset * sizeof(int), // a_dep->of_d * sizeof(int), // dst_offset
+      mta.src_offset * sizeof(int), // a_dep->of_s * sizeof(int), // src_offset,
+      mta.dst_device_num, // a_dep->d_id,               // dst_device_num
+      mta.src_device_num  // a_dep->o_id                // src_device_num
+  );
+
   return 0;
 }
-int my_task_entry(kmp_int32 gtid, kmp_task_t *task) {
-  // printf("Executing task with thread: %d\n", gtid);
-  auto local_gtid = __kmpc_global_thread_num(NULL);
-  printf("Executing task with thread: %d\n", local_gtid);
-  printf("task_entry happened <-- now sleeping\n");
-  //sleep for 2 seconds
-  std::this_thread::sleep_for(std::chrono::seconds(5));
-  printf("task_entry happened <-- now wake up\n");
 
-  return 3;
+int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
+                   int sourceID, int targetID) {
+  // If environment variable LIBOMPTARGET_USE_STRATEGIZER is not set, return
+  // immediately.
+  static const bool useStrategizer = []() {
+    return getenv("LIBOMPTARGET_USE_STRATEGIZER") != NULL;
+  }();
+  if (!useStrategizer)
+    return 0;
+
+  printf("[WARNING] Using strategizer\n");
+
+  // Get minumum size in bytes to use Strategizer. If not set, defaults to 1MB
+  static const size_t minSize = []() {
+    const char *env = getenv("LIBOMPTARGET_STRATEGIZER_MIN_SIZE");
+    if (env) {
+      printf("[WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE set to %s\n", env);
+      return (size_t)std::stoull(env);
+    }
+    printf("[WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE not set, using 1MB\n");
+    return (size_t)1 << 20;
+  }();
+
+  if (Size < minSize)
+    return 0;
+
+  printf("[WARNING] AutoStrategizer planning data move from %p to %p with size "
+         "%d\n\n",
+         HstPtrBegin, TgtPtrBegin, Size);
+  printf("[WARNING] Device: %d to Device: %d\n\n", sourceID, targetID);
+
+  kmp_int32 gtid = __kmpc_global_thread_num(NULL);
+  // Set Architecture
+  // AutoStrategizer::AutoStrategizer my_AutoS("topo_dgx");
+  AutoStrategizer::AutoStrategizer my_AutoS("topo_smx");
+
+  // Print topology
+  my_AutoS.printTopo(AutoStrategizer::CLI);
+
+  void **mem_ptr;
+  mem_ptr = my_AutoS.get_memptr();
+
+  // Define Operation
+  AutoStrategizer::CollectiveOperation my_CoP;
+
+  my_CoP.add_origin(sourceID);
+  my_CoP.add_destination(targetID);
+  my_CoP.set_size(Size);
+  my_CoP.set_coop(AutoStrategizer::D2D);
+  my_CoP.set_mhtd(AutoStrategizer::P2P); // Peer to Peer
+  // my_CoP.set_mhtd(AutoStrategizer::MXF); // Max Flow
+  // my_CoP.set_mhtd(AutoStrategizer::DVT); // Distant Vector
+
+  my_AutoS.addCO(&my_CoP);
+
+  // my_AutoS.printTopo_cpy(AutoStrategizer::CLI);
+
+  my_AutoS.printCO(AutoStrategizer::CLI);
+
+  // Malloc hosts and targets
+  my_AutoS.auto_malloc();
+
+  // Initialize Origin
+
+  // Get dependencies
+  for (auto &a_dep : *(my_AutoS.getDeps())) {
+    printf("[EXEC:] Orig: %d Dest: %d Size: %zu O_Offs: %zu D_Offs: %zu, Path "
+           "No.: %d\n",
+           a_dep->orig, a_dep->dest, a_dep->size, a_dep->of_s, a_dep->of_d,
+           a_dep->ipth);
+  }
+
+  // Executing
+  double start, end;
+  int n_deps;
+  n_deps = my_AutoS.getDeps()->size();
+  start = omp_get_wtime();
+
+  // Data movement tasks creation
+  // hidden helper tasks
+  for (auto &a_dep : *(my_AutoS.getDeps())) {
+    kmpc_task_t_with_privates *memory_task =
+        (kmpc_task_t_with_privates *)__kmpc_omp_target_task_alloc_v2(
+            NULL /*debug info*/, gtid, (kmp_int32)0 /* flags: 1 or 0 idk*/,
+            sizeof(kmpc_task_t_with_privates),
+            (size_t)0 /*size of shared vars*/,
+            (kmp_routine_entry_t)(memory_task_kernel),
+            (kmp_int64)-1 /*hidden helper task*/);
+
+    // set task args for memory movement
+    memory_task->mem_task_args.dst = mem_ptr[a_dep->dest];
+    memory_task->mem_task_args.src = mem_ptr[a_dep->orig];
+    memory_task->mem_task_args.size = a_dep->size;
+    memory_task->mem_task_args.dst_offset = a_dep->of_d;
+    memory_task->mem_task_args.src_offset = a_dep->of_s;
+    memory_task->mem_task_args.dst_device_num = a_dep->d_id;
+    memory_task->mem_task_args.src_device_num = a_dep->o_id;
+
+    // only out deps
+    if (a_dep->deps == 0) {
+      // same as
+      // depend(out:mem_ptr[a_dep->dest])
+      kmp_depend_info_t dep_info[1];
+      dep_info[0].base_addr = (kmp_intptr_t)mem_ptr[a_dep->dest];
+      dep_info[0].len = 1;
+      dep_info[0].flags.in = 0;
+      dep_info[0].flags.out = 1;
+      dep_info[0].flags.mtx = 0;
+      dep_info[0].flag = KMP_DEP_OUT;
+      __kmpc_omp_task_with_deps(NULL, gtid, (kmp_task_t *)memory_task, 1,
+                                dep_info, 0, NULL);
+
+    } else {
+      // in and out deps
+      // same as
+      // depend(in:mem_ptr[a_dep->orig]) depend(out:mem_ptr[a_dep->dest])
+
+      // Set dependencies
+      kmp_depend_info_t dep_info[2];
+      dep_info[0].base_addr = (kmp_intptr_t)mem_ptr[a_dep->orig];
+      dep_info[0].len = 1;
+      dep_info[0].flags.in = 1;
+      dep_info[0].flags.out = 0;
+      dep_info[0].flags.mtx = 0;
+      dep_info[0].flag = KMP_DEP_IN;
+
+      dep_info[1].base_addr = (kmp_intptr_t)mem_ptr[a_dep->dest];
+      dep_info[1].len = 1;
+      dep_info[1].flags.in = 0;
+      dep_info[1].flags.out = 1;
+      dep_info[1].flags.mtx = 0;
+      dep_info[1].flag = KMP_DEP_OUT;
+      __kmpc_omp_task_with_deps(NULL, gtid, (kmp_task_t *)memory_task, 2,
+                                dep_info, 0, NULL);
+    }
+  }
+
+  end = omp_get_wtime();
+  __kmpc_omp_taskwait(NULL, gtid);
+
+  return 1;
 }
-int my_task_entry2(kmp_int32 gtid, kmp_task_t *task) {
-  // printf("Executing task with thread: %d\n", gtid);
-  auto local_gtid = __kmpc_global_thread_num(NULL);
-  printf("Executing task with thread: %d\n", local_gtid);
-  printf("task_entry2 happened\n");
-  return 3;
-}
+
 // Submit data to device
 int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
                              AsyncInfoTy &AsyncInfo) {
-  printf("submitData from %p to %p with size %d\n\n", HstPtrBegin, TgtPtrBegin,
-         Size);
-  // If Auto Strategizer is on:
-  // int x = __kmpc_get_hardware_thread_id_in_block();
-  printf("I will create a task now\n");
-  kmp_int32 gtid = __kmpc_global_thread_num(NULL);
 
-  // Set dependencies
-  kmp_intptr_t bla = (kmp_intptr_t)malloc(10);
-  kmp_intptr_t bla_2 = (kmp_intptr_t)malloc(10);
-  kmp_depend_info_t dep_info1[2];
-  dep_info1[0].base_addr = bla;
-  dep_info1[0].len = 10;
-  dep_info1[0].flags.in = 0;
-  dep_info1[0].flags.out = 1;
-  dep_info1[0].flags.mtx = 0;
-  dep_info1[0].flag = KMP_DEP_OUT;
-
-  dep_info1[1].base_addr = bla_2;
-  dep_info1[1].len = 10;
-  dep_info1[1].flags.in = 0;
-  dep_info1[1].flags.out = 1;
-  dep_info1[1].flags.mtx = 0;
-  dep_info1[1].flag = KMP_DEP_OUT;
-
-  kmp_depend_info_t dep_info2[2];
-  dep_info2[0].base_addr = bla;
-  dep_info2[0].len = 10;
-  dep_info2[0].flags.in = 1;
-  dep_info2[0].flags.out = 0;
-  dep_info2[0].flags.mtx = 0;
-  dep_info2[0].flag = KMP_DEP_IN;
-
-  dep_info2[1].base_addr = bla_2;
-  dep_info2[1].len = 10;
-  dep_info2[1].flags.in = 1;
-  dep_info2[1].flags.out = 0;
-  dep_info2[1].flags.mtx = 0;
-  dep_info2[1].flag = KMP_DEP_IN;
-
-  // hidden helper tasks
-  kmp_task_t *my_task_1 = __kmpc_omp_target_task_alloc_v2(
-      NULL, gtid, (kmp_int32)0, (size_t)0, (size_t)0,
-      (kmp_routine_entry_t)(my_task_entry2), (kmp_int64)-1);
-
-  kmp_task_t *my_task_2 = __kmpc_omp_target_task_alloc_v2(
-      NULL, gtid, (kmp_int32)0, (size_t)0 , (size_t)0,
-      (kmp_routine_entry_t) (my_task_entry2), (kmp_int64)-1);
-
-
-  __kmpc_omp_task_with_deps(NULL, gtid, my_task_1, 2, dep_info1 , 0, NULL);
-  __kmpc_omp_task_with_deps(NULL, gtid, my_task_2, 2, dep_info2, 0, NULL);
-
-  // __kmpc_omp_taskwait(NULL, gtid);
-  auto z = test(1, 2);
-
-  // if Size >> auto strategizer thresheold size, call AutoS
-  // we have to wait for autoS tasks to finish
+  if (useStrategizer(HstPtrBegin, TgtPtrBegin, Size, 0, 2 + RTLDeviceID)) {
+    printf("moved data using AutoStrategizer\n");
+    return 0;
+  }
 
   // else call data_submit
   if (getInfoLevel() & OMP_INFOTYPE_DATA_TRANSFER) {
@@ -646,8 +754,10 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
 // Retrieve data from device
 int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
                                int64_t Size, AsyncInfoTy &AsyncInfo) {
-  printf("retrieveData from %p to %p with size %d\n\n", HstPtrBegin,
-         TgtPtrBegin, Size);
+  if (useStrategizer(TgtPtrBegin, HstPtrBegin, Size, 2 + RTLDeviceID, 0)) {
+    printf("moved data using AutoStrategizer\n");
+    return 0;
+  }
   if (getInfoLevel() & OMP_INFOTYPE_DATA_TRANSFER) {
     HDTTMapAccessorTy HDTTMap = HostDataToTargetMap.getExclusiveAccessor();
     LookupResult LR = lookupMapping(HDTTMap, HstPtrBegin, Size);
@@ -669,7 +779,12 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
 // Copy data from current device to destination device directly
 int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
                                int64_t Size, AsyncInfoTy &AsyncInfo) {
-  printf("ExchangeData from %p to %p with size %d\n\n", SrcPtr, DstPtr, Size);
+  if (useStrategizer(SrcPtr, DstPtr, Size, RTLDeviceID + 2,
+                     DstDev.RTLDeviceID + 2)) {
+    printf("moved data using AutoStrategizer\n");
+    return 0;
+  }
+
   if (!AsyncInfo || !RTL->data_exchange_async || !RTL->synchronize) {
     assert(RTL->data_exchange && "RTL->data_exchange is nullptr");
     return RTL->data_exchange(RTLDeviceID, SrcPtr, DstDev.RTLDeviceID, DstPtr,

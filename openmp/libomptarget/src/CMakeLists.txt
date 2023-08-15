@@ -24,9 +24,9 @@ add_llvm_library(omptarget
   ompt_callback.cpp
   rtl.cpp
   LegacyAPI.cpp
+  autoStrategizer.cpp
 
   ADDITIONAL_HEADER_DIRS
-  # ${CMAKE_CURRENT_SOURCE_DIR}/../DeviceRTL/include/Interface.h
 
   LINK_COMPONENTS
   Support
@@ -38,6 +38,10 @@ add_llvm_library(omptarget
   "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports"
   NO_INSTALL_RPATH
 )
+
+# add -lnuma to compilation
+target_link_libraries(omptarget PRIVATE numa)
+
 target_include_directories(omptarget PRIVATE ${LIBOMPTARGET_INCLUDE_DIR} 
 # include DeviceRTL headers
 ${CMAKE_CURRENT_SOURCE_DIR}/../DeviceRTL/include
