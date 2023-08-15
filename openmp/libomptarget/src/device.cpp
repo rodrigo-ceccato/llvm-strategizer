@@ -544,7 +544,9 @@ int task_entry(kmp_int32 gtid) {
   return 0;
 }
 int my_task_entry(kmp_int32 gtid, kmp_task_t *task) {
-  printf("Executing task with thread: %d\n", gtid);
+  // printf("Executing task with thread: %d\n", gtid);
+  auto local_gtid = __kmpc_global_thread_num(NULL);
+  printf("Executing task with thread: %d\n", local_gtid);
   printf("task_entry happened <-- now sleeping\n");
   //sleep for 2 seconds
   std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -553,7 +555,9 @@ int my_task_entry(kmp_int32 gtid, kmp_task_t *task) {
   return 3;
 }
 int my_task_entry2(kmp_int32 gtid, kmp_task_t *task) {
-  printf("Executing task with thread: %d\n", gtid);
+  // printf("Executing task with thread: %d\n", gtid);
+  auto local_gtid = __kmpc_global_thread_num(NULL);
+  printf("Executing task with thread: %d\n", local_gtid);
   printf("task_entry2 happened\n");
   return 3;
 }
@@ -572,52 +576,48 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
   kmp_intptr_t bla_2 = (kmp_intptr_t)malloc(10);
   kmp_depend_info_t dep_info1[2];
   dep_info1[0].base_addr = bla;
-  dep_info1[0].len = 9;
+  dep_info1[0].len = 10;
   dep_info1[0].flags.in = 0;
   dep_info1[0].flags.out = 1;
   dep_info1[0].flags.mtx = 0;
-  dep_info1[0].flag = 2;
+  dep_info1[0].flag = KMP_DEP_OUT;
 
   dep_info1[1].base_addr = bla_2;
-  dep_info1[1].len = 9;
+  dep_info1[1].len = 10;
   dep_info1[1].flags.in = 0;
   dep_info1[1].flags.out = 1;
   dep_info1[1].flags.mtx = 0;
-  dep_info1[1].flag = 0x2;
-
+  dep_info1[1].flag = KMP_DEP_OUT;
 
   kmp_depend_info_t dep_info2[2];
   dep_info2[0].base_addr = bla;
   dep_info2[0].len = 10;
   dep_info2[0].flags.in = 1;
   dep_info2[0].flags.out = 0;
-  dep_info2[0].flags.mtx = 0x2;
+  dep_info2[0].flags.mtx = 0;
+  dep_info2[0].flag = KMP_DEP_IN;
 
   dep_info2[1].base_addr = bla_2;
   dep_info2[1].len = 10;
   dep_info2[1].flags.in = 1;
   dep_info2[1].flags.out = 0;
-  dep_info2[1].flags.mtx = 1;
-  dep_info2[1].flag = 3;
+  dep_info2[1].flags.mtx = 0;
+  dep_info2[1].flag = KMP_DEP_IN;
 
-  kmp_task_t *my_task_1 =
-      __kmpc_omp_task_alloc(NULL, gtid, 1, (size_t)0 * sizeof(void *),
-                            (size_t)0, (kmp_routine_entry_t)my_task_entry);
+  // hidden helper tasks
+  kmp_task_t *my_task_1 = __kmpc_omp_target_task_alloc_v2(
+      NULL, gtid, (kmp_int32)0, (size_t)0, (size_t)0,
+      (kmp_routine_entry_t)(my_task_entry2), (kmp_int64)-1);
 
-  // kmp_task_t *my_task_2 =
-  //     __kmpc_omp_task_alloc(NULL, gtid, 1, (size_t)0 * sizeof(void *),
-  //                           (size_t)0, (kmp_routine_entry_t)my_task_entry2);
-
-  // hidden helper task
   kmp_task_t *my_task_2 = __kmpc_omp_target_task_alloc_v2(
       NULL, gtid, (kmp_int32)0, (size_t)0 , (size_t)0,
       (kmp_routine_entry_t) (my_task_entry2), (kmp_int64)-1);
 
 
   __kmpc_omp_task_with_deps(NULL, gtid, my_task_1, 2, dep_info1 , 0, NULL);
-  // __kmpc_omp_task_with_deps(NULL, gtid, my_task_2, 1, &dep_info2, 0, NULL);
+  __kmpc_omp_task_with_deps(NULL, gtid, my_task_2, 2, dep_info2, 0, NULL);
 
-  __kmpc_omp_taskwait(NULL, gtid);
+  // __kmpc_omp_taskwait(NULL, gtid);
   auto z = test(1, 2);
 
   // if Size >> auto strategizer thresheold size, call AutoS

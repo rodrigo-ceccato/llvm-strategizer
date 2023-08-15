@@ -108,6 +108,13 @@ typedef intptr_t kmp_intptr_t;
 typedef unsigned char kmp_uint8;
 // Compiler sends us this info:
 // Updated with kmp.h version
+// macros for checking dep flag as an integer
+#define KMP_DEP_IN 0x1
+#define KMP_DEP_OUT 0x2
+#define KMP_DEP_INOUT 0x3
+#define KMP_DEP_MTX 0x4
+#define KMP_DEP_SET 0x8
+#define KMP_DEP_ALL 0x80
 typedef struct kmp_depend_info {
   kmp_intptr_t base_addr;
   size_t len;
