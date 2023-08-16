@@ -659,6 +659,11 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
 
   // Data movement tasks creation
   // hidden helper tasks
+
+  // early return to avoid overhead
+  if (n_deps == 1)
+    return 0;
+
   for (auto &a_dep : *(my_AutoS.getDeps())) {
     kmpc_task_t_with_privates *memory_task =
         (kmpc_task_t_with_privates *)__kmpc_omp_target_task_alloc_v2(
@@ -716,8 +721,9 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
     }
   }
 
-  end = omp_get_wtime();
   __kmpc_omp_taskwait(NULL, gtid);
+  end = omp_get_wtime();
+  printf("[AS] Time: %f\n", end - start);
 
   return 1;
 }
