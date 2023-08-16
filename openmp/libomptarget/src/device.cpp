@@ -657,7 +657,9 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   my_AutoS.printCO(AutoStrategizer::CLI);
 
   // Malloc hosts and targets
-  my_AutoS.auto_malloc();
+  my_AutoS.auto_malloc(1 /** keep original pointers*/);
+  my_AutoS.mem_ptr[sourceID] = HstPtrBegin;
+  my_AutoS.mem_ptr[targetID] = TgtPtrBegin;
 
   // Get dependencies
   for (auto &a_dep : *(my_AutoS.getDeps())) {
@@ -735,7 +737,7 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
 
   __kmpc_omp_taskwait(NULL, gtid);
 
-  my_AutoS.auto_mfree();
+  my_AutoS.auto_mfree(1 /* keep original pointers*/);
   end = omp_get_wtime();
   printf("[AS] Time: %f\n", end - start);
 
