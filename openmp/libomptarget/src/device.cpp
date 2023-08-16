@@ -558,13 +558,14 @@ struct kmpc_task_t_with_privates {
 int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
 
   auto local_gtid = __kmpc_global_thread_num(NULL);
-  printf("Executing memory task kernel with thread: %d\n", local_gtid,
+  printf("[AS] Executing memory task kernel with thread: %d\n", local_gtid,
          task->mem_task_args.size);
 
   auto mta = task->mem_task_args;
   // Print source and destination information from mta
-  printf("[AS] Source ID: %p, destination ID: %p\n", mta.src_device_num,
-         mta.dst_device_num);
+  printf(
+      "[AS] omp mem cpy Source ID: %d, destination ID: %d, size (bytes) = %d\n",
+      mta.src_device_num, mta.dst_device_num, mta.size * sizeof(int));
 
   // TODO: prevent this form triggering auto strategizer
   omp_target_memcpy_no_as(
@@ -585,10 +586,16 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
                    int sourceID, int targetID) {
   // If environment variable LIBOMPTARGET_USE_STRATEGIZER is not set, return
   // immediately.
-  static const bool useStrategizer = []() {
-    return getenv("LIBOMPTARGET_USE_STRATEGIZER") != NULL;
+  static const bool strategizerEnabled = []() {
+    auto env = getenv("LIBOMPTARGET_USE_STRATEGIZER");
+    // return false if not set, equal to 0 or false
+    if (!env || !strcmp(env, "0") || !strcmp(env, "false"))
+      return false;
+
+    printf("[AS][WARNING] LIBOMPTARGET_USE_STRATEGIZER set to %s\n", env);
+    return true;
   }();
-  if (!useStrategizer)
+  if (!strategizerEnabled)
     return 0;
 
   printf("[AS][WARNING] Using auto strategizer!\n");
@@ -637,7 +644,7 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   assert(targetID >= 0 && "Target ID must not be negative");
   my_CoP.add_origin(sourceID);
   my_CoP.add_destination(targetID);
-  my_CoP.set_size((int)Size / sizeof(int)); // AS lib uses num of elements here
+  my_CoP.set_size(Size / sizeof(int)); // AS lib uses num of elements here
   my_CoP.set_coop(AutoStrategizer::D2D);
   my_CoP.set_mhtd(AutoStrategizer::P2P); // Peer to Peer
   // my_CoP.set_mhtd(AutoStrategizer::MXF); // Max Flow
@@ -742,7 +749,8 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
   const bool bypass_as = AsyncInfo.bypass_as;
   if (!bypass_as &&
       useStrategizer(HstPtrBegin, TgtPtrBegin, Size, 0, 2 + RTLDeviceID)) {
-    printf("[AS] Moved data form devicedID %d to %d\n", 0, RTLDeviceID);
+    printf("[AS] Moved data from devicedID %d to %d\n",
+           omp_get_initial_device(), RTLDeviceID);
     return OFFLOAD_SUCCESS;
   }
 
@@ -772,7 +780,8 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
   const bool bypass_as = AsyncInfo.bypass_as;
   if (!bypass_as &&
       useStrategizer(TgtPtrBegin, HstPtrBegin, Size, 2 + RTLDeviceID, 0)) {
-    printf("[AS] Moved data form devicedID %d to %d\n", RTLDeviceID, 0);
+    printf("[AS] Moved data form OMP devicedID %d to %d\n", RTLDeviceID,
+           omp_get_initial_device());
     return OFFLOAD_SUCCESS;
   }
 

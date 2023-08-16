@@ -227,7 +227,6 @@ void AutoStrategizer::printCO(printMode mode) {
 
 void AutoStrategizer::addCO(CollectiveOperation *a_CO) {
   all_ops.push_back(a_CO);
-  printf("here\n");
   // Create a copy Interconnectivity Matrix
   this->copy_mx();
 
@@ -292,8 +291,6 @@ void AutoStrategizer::ops_deps() {
   float min_lat;
   OperationDependence *op_deps;
   // typedef std::vector<int> a_path;
-
-  printf("here\n");
 
   class op_path {
   public:
