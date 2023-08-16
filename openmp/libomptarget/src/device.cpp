@@ -566,14 +566,16 @@ int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
   printf("[AS] Source ID: %p, destination ID: %p\n", mta.src_device_num,
          mta.dst_device_num);
 
-  omp_target_memcpy(
+  // TODO: prevent this form triggering auto strategizer
+  omp_target_memcpy_no_as(
       mta.dst,                      // mem_ptr[a_dep->dest],      // dst
       mta.src,                      // mem_ptr[a_dep->orig],      // src
       mta.size * sizeof(int),       // a_dep->size * sizeof(int), // length
       mta.dst_offset * sizeof(int), // a_dep->of_d * sizeof(int), // dst_offset
       mta.src_offset * sizeof(int), // a_dep->of_s * sizeof(int), // src_offset,
       mta.dst_device_num, // a_dep->d_id,               // dst_device_num
-      mta.src_device_num  // a_dep->o_id                // src_device_num
+      mta.src_device_num, // a_dep->o_id                // src_device_num
+      true                // Bypass the auto strategizer
   );
 
   return 0;
@@ -612,8 +614,8 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
 
   kmp_int32 gtid = __kmpc_global_thread_num(NULL);
   // Set Architecture
-  // AutoStrategizer::AutoStrategizer my_AutoS("topo_dgx");
-  AutoStrategizer::AutoStrategizer my_AutoS("topo_smx");
+  AutoStrategizer::AutoStrategizer my_AutoS("topo_dgx");
+  // AutoStrategizer::AutoStrategizer my_AutoS("topo_smx");
 
   // Print topology
   my_AutoS.printTopo(AutoStrategizer::CLI);
@@ -624,9 +626,10 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   // Define Operation
   AutoStrategizer::CollectiveOperation my_CoP;
 
+  assert(Size >= 0 && "Size must be positive");
   my_CoP.add_origin(sourceID);
   my_CoP.add_destination(targetID);
-  my_CoP.set_size(Size);
+  my_CoP.set_size((int)Size / sizeof(int)); // AS lib uses num of elements here
   my_CoP.set_coop(AutoStrategizer::D2D);
   my_CoP.set_mhtd(AutoStrategizer::P2P); // Peer to Peer
   // my_CoP.set_mhtd(AutoStrategizer::MXF); // Max Flow
@@ -661,8 +664,8 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   // hidden helper tasks
 
   // early return to avoid overhead
-  if (n_deps == 1)
-    return 0;
+  // if (n_deps == 1)
+  //   return 0;
 
   for (auto &a_dep : *(my_AutoS.getDeps())) {
     kmpc_task_t_with_privates *memory_task =
@@ -723,6 +726,8 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
 
   __kmpc_omp_taskwait(NULL, gtid);
   end = omp_get_wtime();
+
+  my_AutoS.auto_mfree();
   printf("[AS] Time: %f\n", end - start);
 
   return 1;
@@ -732,9 +737,11 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
 int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
                              AsyncInfoTy &AsyncInfo) {
 
-  if (useStrategizer(HstPtrBegin, TgtPtrBegin, Size, 0, 2 + RTLDeviceID)) {
+  const bool bypass_as = AsyncInfo.bypass_as;
+  if (!bypass_as &&
+      useStrategizer(HstPtrBegin, TgtPtrBegin, Size, 0, 2 + RTLDeviceID)) {
     printf("moved data using AutoStrategizer\n");
-    return 0;
+    return 0; // TODO: check if we should return 0
   }
 
   // else call data_submit
@@ -760,7 +767,9 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
 // Retrieve data from device
 int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
                                int64_t Size, AsyncInfoTy &AsyncInfo) {
-  if (useStrategizer(TgtPtrBegin, HstPtrBegin, Size, 2 + RTLDeviceID, 0)) {
+  const bool bypass_as = AsyncInfo.bypass_as;
+  if (!bypass_as &&
+      useStrategizer(TgtPtrBegin, HstPtrBegin, Size, 2 + RTLDeviceID, 0)) {
     printf("moved data using AutoStrategizer\n");
     return 0;
   }
@@ -785,8 +794,9 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
 // Copy data from current device to destination device directly
 int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
                                int64_t Size, AsyncInfoTy &AsyncInfo) {
-  if (useStrategizer(SrcPtr, DstPtr, Size, RTLDeviceID + 2,
-                     DstDev.RTLDeviceID + 2)) {
+  const bool bypass_as = AsyncInfo.bypass_as;
+  if (!bypass_as && useStrategizer(SrcPtr, DstPtr, Size, RTLDeviceID + 2,
+                                   DstDev.RTLDeviceID + 2)) {
     printf("moved data using AutoStrategizer\n");
     return 0;
   }

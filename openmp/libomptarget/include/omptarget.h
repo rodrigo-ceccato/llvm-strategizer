@@ -199,6 +199,7 @@ struct DeviceTy;
 class AsyncInfoTy {
 public:
   enum class SyncTy { BLOCKING, NON_BLOCKING };
+  bool bypass_as = false;
 
 private:
   /// Locations we used in (potentially) asynchronous calls which should live
@@ -303,6 +304,9 @@ int omp_target_is_present(const void *Ptr, int DeviceNum);
 int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
                       size_t DstOffset, size_t SrcOffset, int DstDevice,
                       int SrcDevice);
+int omp_target_memcpy_no_as(void *Dst, const void *Src, size_t Length,
+                            size_t DstOffset, size_t SrcOffset, int DstDevice,
+                            int SrcDevice, bool bypassAs);
 int omp_target_memcpy_rect(void *Dst, const void *Src, size_t ElementSize,
                            int NumDims, const size_t *Volume,
                            const size_t *DstOffsets, const size_t *SrcOffsets,

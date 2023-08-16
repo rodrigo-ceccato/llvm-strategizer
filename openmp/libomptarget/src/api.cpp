@@ -130,10 +130,10 @@ EXTERN int omp_target_is_present(const void *Ptr, int DeviceNum) {
   DP("Call to omp_target_is_present returns %d\n", Rc);
   return Rc;
 }
-
-EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
-                             size_t DstOffset, size_t SrcOffset, int DstDevice,
-                             int SrcDevice) {
+EXTERN int omp_target_memcpy_no_as(void *Dst, const void *Src, size_t Length,
+                                   size_t DstOffset, size_t SrcOffset,
+                                   int DstDevice, int SrcDevice,
+                                   bool bypassAs) {
   TIMESCOPE();
   DP("Call to omp_target_memcpy, dst device %d, src device %d, "
      "dst addr " DPxMOD ", src addr " DPxMOD ", dst offset %zu, "
@@ -175,11 +175,13 @@ EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
     DP("copy from host to device\n");
     DeviceTy &DstDev = *PM->Devices[DstDevice];
     AsyncInfoTy AsyncInfo(DstDev);
+    AsyncInfo.bypass_as = bypassAs;
     Rc = DstDev.submitData(DstAddr, SrcAddr, Length, AsyncInfo);
   } else if (DstDevice == omp_get_initial_device()) {
     DP("copy from device to host\n");
     DeviceTy &SrcDev = *PM->Devices[SrcDevice];
     AsyncInfoTy AsyncInfo(SrcDev);
+    AsyncInfo.bypass_as = bypassAs;
     Rc = SrcDev.retrieveData(DstAddr, SrcAddr, Length, AsyncInfo);
   } else {
     DP("copy from device to device\n");
@@ -189,6 +191,7 @@ EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
     // to unefficient way.
     if (SrcDev.isDataExchangable(DstDev)) {
       AsyncInfoTy AsyncInfo(SrcDev);
+      AsyncInfo.bypass_as = bypassAs;
       Rc = SrcDev.dataExchange(SrcAddr, DstDev, DstAddr, Length, AsyncInfo);
       if (Rc == OFFLOAD_SUCCESS)
         return OFFLOAD_SUCCESS;
@@ -197,10 +200,12 @@ EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
     void *Buffer = malloc(Length);
     {
       AsyncInfoTy AsyncInfo(SrcDev);
+      AsyncInfo.bypass_as = bypassAs;
       Rc = SrcDev.retrieveData(Buffer, SrcAddr, Length, AsyncInfo);
     }
     if (Rc == OFFLOAD_SUCCESS) {
       AsyncInfoTy AsyncInfo(DstDev);
+      AsyncInfo.bypass_as = bypassAs;
       Rc = DstDev.submitData(DstAddr, Buffer, Length, AsyncInfo);
     }
     free(Buffer);
@@ -208,6 +213,15 @@ EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
 
   DP("omp_target_memcpy returns %d\n", Rc);
   return Rc;
+}
+
+EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
+                             size_t DstOffset, size_t SrcOffset, int DstDevice,
+                             int SrcDevice) {
+  // Original calls to omp_target_memcpy check for AS
+  return omp_target_memcpy_no_as(Dst, Src, Length, DstOffset, SrcOffset,
+                                 DstDevice, SrcDevice,
+                                 false /*do not bypass AS*/);
 }
 
 EXTERN int
