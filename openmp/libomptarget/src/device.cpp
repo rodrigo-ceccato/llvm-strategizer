@@ -591,26 +591,32 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   if (!useStrategizer)
     return 0;
 
-  printf("[WARNING] Using strategizer\n");
+  printf("[AS][WARNING] Using auto strategizer!\n");
+  double start, end;
+  start = omp_get_wtime();
 
   // Get minumum size in bytes to use Strategizer. If not set, defaults to 1MB
   static const size_t minSize = []() {
     const char *env = getenv("LIBOMPTARGET_STRATEGIZER_MIN_SIZE");
     if (env) {
-      printf("[WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE set to %s\n", env);
+      printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE set to %s\n",
+             env);
       return (size_t)std::stoull(env);
     }
-    printf("[WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE not set, using 1MB\n");
+    printf(
+        "[AS][WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE not set, using 1MB\n");
     return (size_t)1 << 20;
   }();
 
-  if (Size < minSize)
+  if (Size < minSize) {
+    printf("[AS] Size is less than threshold, not using Strategizer\n");
     return 0;
+  }
 
-  printf("[WARNING] AutoStrategizer planning data move from %p to %p with size "
-         "%d\n\n",
+  printf("[AS] Planning data move from %p to %p with size "
+         "%d\n",
          HstPtrBegin, TgtPtrBegin, Size);
-  printf("[WARNING] Device: %d to Device: %d\n\n", sourceID, targetID);
+  printf("[AS] Strategizer device id: %d to %d\n", sourceID, targetID);
 
   kmp_int32 gtid = __kmpc_global_thread_num(NULL);
   // Set Architecture
@@ -626,7 +632,9 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   // Define Operation
   AutoStrategizer::CollectiveOperation my_CoP;
 
-  assert(Size >= 0 && "Size must be positive");
+  assert(Size >= 0 && "Size must not be negative");
+  assert(sourceID >= 0 && "Source ID must not be negative");
+  assert(targetID >= 0 && "Target ID must not be negative");
   my_CoP.add_origin(sourceID);
   my_CoP.add_destination(targetID);
   my_CoP.set_size((int)Size / sizeof(int)); // AS lib uses num of elements here
@@ -644,24 +652,18 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   // Malloc hosts and targets
   my_AutoS.auto_malloc();
 
-  // Initialize Origin
-
   // Get dependencies
   for (auto &a_dep : *(my_AutoS.getDeps())) {
-    printf("[EXEC:] Orig: %d Dest: %d Size: %zu O_Offs: %zu D_Offs: %zu, Path "
-           "No.: %d\n",
-           a_dep->orig, a_dep->dest, a_dep->size, a_dep->of_s, a_dep->of_d,
-           a_dep->ipth);
+    printf(
+        "[AS][EXEC:] Orig: %d Dest: %d Size: %zu O_Offs: %zu D_Offs: %zu, Path "
+        "No.: %d\n",
+        a_dep->orig, a_dep->dest, a_dep->size, a_dep->of_s, a_dep->of_d,
+        a_dep->ipth);
   }
 
   // Executing
-  double start, end;
   int n_deps;
   n_deps = my_AutoS.getDeps()->size();
-  start = omp_get_wtime();
-
-  // Data movement tasks creation
-  // hidden helper tasks
 
   // early return to avoid overhead
   // if (n_deps == 1)
@@ -725,12 +727,12 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   }
 
   __kmpc_omp_taskwait(NULL, gtid);
-  end = omp_get_wtime();
 
   my_AutoS.auto_mfree();
+  end = omp_get_wtime();
   printf("[AS] Time: %f\n", end - start);
 
-  return 1;
+  return 1; // != means offload success from AS
 }
 
 // Submit data to device
@@ -740,8 +742,8 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
   const bool bypass_as = AsyncInfo.bypass_as;
   if (!bypass_as &&
       useStrategizer(HstPtrBegin, TgtPtrBegin, Size, 0, 2 + RTLDeviceID)) {
-    printf("moved data using AutoStrategizer\n");
-    return 0; // TODO: check if we should return 0
+    printf("[AS] Moved data form devicedID %d to %d\n", 0, RTLDeviceID);
+    return OFFLOAD_SUCCESS;
   }
 
   // else call data_submit
@@ -770,9 +772,10 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
   const bool bypass_as = AsyncInfo.bypass_as;
   if (!bypass_as &&
       useStrategizer(TgtPtrBegin, HstPtrBegin, Size, 2 + RTLDeviceID, 0)) {
-    printf("moved data using AutoStrategizer\n");
-    return 0;
+    printf("[AS] Moved data form devicedID %d to %d\n", RTLDeviceID, 0);
+    return OFFLOAD_SUCCESS;
   }
+
   if (getInfoLevel() & OMP_INFOTYPE_DATA_TRANSFER) {
     HDTTMapAccessorTy HDTTMap = HostDataToTargetMap.getExclusiveAccessor();
     LookupResult LR = lookupMapping(HDTTMap, HstPtrBegin, Size);
@@ -797,8 +800,9 @@ int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
   const bool bypass_as = AsyncInfo.bypass_as;
   if (!bypass_as && useStrategizer(SrcPtr, DstPtr, Size, RTLDeviceID + 2,
                                    DstDev.RTLDeviceID + 2)) {
-    printf("moved data using AutoStrategizer\n");
-    return 0;
+    printf("[AS] Moved data form devicedID %d to %d\n", RTLDeviceID,
+           DstDev.RTLDeviceID);
+    return OFFLOAD_SUCCESS;
   }
 
   if (!AsyncInfo || !RTL->data_exchange_async || !RTL->synchronize) {
