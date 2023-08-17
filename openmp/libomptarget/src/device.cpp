@@ -557,18 +557,18 @@ struct kmpc_task_t_with_privates {
 // Execute a memory operation for the Strategizer.
 int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
 
-  auto local_gtid = __kmpc_global_thread_num(NULL);
-  printf("[AS] Executing memory task kernel with thread: %d\n", local_gtid,
-         task->mem_task_args.size);
+  // auto local_gtid = __kmpc_global_thread_num(NULL);
+  // printf("[AS] Executing memory task kernel with thread: %d\n", local_gtid,
+  //        task->mem_task_args.size);
 
   auto mta = task->mem_task_args;
   // Print source and destination information from mta
-  printf(
-      "[AS] omp mem cpy Source ID: %d, destination ID: %d, size (bytes) = %d\n",
-      mta.src_device_num, mta.dst_device_num, mta.size * sizeof(int));
-  fflush(stdout); // Will now print everything in the stdout buffer
+  // printf(
+  //     "[AS] omp mem cpy Source ID: %d, destination ID: %d, size (bytes) =
+  //     %d\n", mta.src_device_num, mta.dst_device_num, mta.size * sizeof(int));
 
   // TODO: prevent this form triggering auto strategizer
+  auto start = std::chrono::high_resolution_clock::now();
   omp_target_memcpy_no_as(
       mta.dst,                      // mem_ptr[a_dep->dest],      // dst
       mta.src,                      // mem_ptr[a_dep->orig],      // src
@@ -579,12 +579,19 @@ int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
       mta.src_device_num, // a_dep->o_id                // src_device_num
       true                // Bypass the auto strategizer
   );
+  auto stop = std::chrono::high_resolution_clock::now();
+  auto duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to execute memory task kernel: %f\n",
+         duration.count() / 1000.0);
 
   return 0;
 }
 
 int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
                    int sourceID, int targetID) {
+
+  auto start = std::chrono::high_resolution_clock::now();
   // If environment variable LIBOMPTARGET_USE_STRATEGIZER is not set, return
   // immediately.
   static const bool strategizerEnabled = []() {
@@ -593,38 +600,37 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
     if (!env || !strcmp(env, "0") || !strcmp(env, "false"))
       return false;
 
-    printf("[AS][WARNING] LIBOMPTARGET_USE_STRATEGIZER set to %s\n", env);
+    // printf("[AS][WARNING] LIBOMPTARGET_USE_STRATEGIZER set to %s\n", env);
     return true;
   }();
   if (!strategizerEnabled)
     return 0;
 
-  printf("[AS][WARNING] Using auto strategizer!\n");
-  double start, end;
-  start = omp_get_wtime();
+  // printf("[AS][WARNING] Using auto strategizer!\n");
 
   // Get minumum size in bytes to use Strategizer. If not set, defaults to 1MB
   static const size_t minSize = []() {
     const char *env = getenv("LIBOMPTARGET_STRATEGIZER_MIN_SIZE");
     if (env) {
-      printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE set to %s\n",
-             env);
+      // printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE set to %s\n",
+      //        env);
       return (size_t)std::stoull(env);
     }
-    printf(
-        "[AS][WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE not set, using 1MB\n");
+    // printf(
+    //     "[AS][WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE not set, using
+    //     1MB\n");
     return (size_t)1 << 20;
   }();
 
   if (Size < minSize) {
-    printf("[AS] Size is less than threshold, not using Strategizer\n");
+    // printf("[AS] Size is less than threshold, not using Strategizer\n");
     return 0;
   }
 
-  printf("[AS] Planning data move from %p to %p with size "
-         "%d\n",
-         HstPtrBegin, TgtPtrBegin, Size);
-  printf("[AS] Strategizer device id: %d to %d\n", sourceID, targetID);
+  // printf("[AS] Planning data move from %p to %p with size "
+  //        "%d\n",
+  //        HstPtrBegin, TgtPtrBegin, Size);
+  // printf("[AS] Strategizer device id: %d to %d\n", sourceID, targetID);
 
   kmp_int32 gtid = __kmpc_global_thread_num(NULL);
 
@@ -633,34 +639,54 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   static const char *topo = []() {
     const char *env = getenv("LIBOMPTARGET_STRATEGIZER_TOPO");
     if (env) {
-      printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_TOPO set to %s\n", env);
+      // printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_TOPO set to %s\n", env);
       return env;
     }
-    printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_TOPO not set, using "
-           "topo_smx\n");
+    // printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_TOPO not set, using "
+    //        "topo_smx\n");
     return "topo_smx";
   }();
 
   static const char *strategy = []() {
     const char *env = getenv("LIBOMPTARGET_STRATEGIZER_STRATEGY");
     if (env) {
-      printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_STRATEGY set to %s\n",
-             env);
+      // printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_STRATEGY set to %s\n",
+      //        env);
       return env;
     }
-    printf(
-        "[AS][WARNING] LIBOMPTARGET_STRATEGIZER_STRATEGY not set, using P2P\n");
+    // printf(
+    //     "[AS][WARNING] LIBOMPTARGET_STRATEGIZER_STRATEGY not set, using
+    //     P2P\n");
     return "P2P";
   }();
+
+  auto stop = std::chrono::high_resolution_clock::now();
+  auto duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to get AS configuration: %f\n", duration.count() / 1000.0);
+  start = std::chrono::high_resolution_clock::now();
 
   // Set Architecture
   AutoStrategizer::AutoStrategizer my_AutoS(topo);
 
+  stop = std::chrono::high_resolution_clock::now();
+  duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to set architecture: %f\n", duration.count() / 1000.0);
+
+  start = std::chrono::high_resolution_clock::now();
+
   // Print topology
-  my_AutoS.printTopo(AutoStrategizer::CLI);
+  // my_AutoS.printTopo(AutoStrategizer::CLI);
 
   void **mem_ptr;
   mem_ptr = my_AutoS.get_memptr();
+
+  stop = std::chrono::high_resolution_clock::now();
+  duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to get mem ptr: %f\n", duration.count() / 1000.0);
+  start = std::chrono::high_resolution_clock::now();
 
   // Define Operation
   AutoStrategizer::CollectiveOperation my_CoP;
@@ -672,6 +698,12 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   my_CoP.add_destination(targetID);
   my_CoP.set_size(Size / sizeof(int)); // AS lib uses num of elements here
   my_CoP.set_coop(AutoStrategizer::D2D);
+
+  stop = std::chrono::high_resolution_clock::now();
+  duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to set operation: %f\n", duration.count() / 1000.0);
+  start = std::chrono::high_resolution_clock::now();
 
   // Set strategy
   if (!strcmp(strategy, "P2P"))
@@ -687,32 +719,42 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   }
 
   my_AutoS.addCO(&my_CoP);
+  stop = std::chrono::high_resolution_clock::now();
+  duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to set strategy: %f\n", duration.count() / 1000.0);
+  start = std::chrono::high_resolution_clock::now();
 
   // my_AutoS.printTopo_cpy(AutoStrategizer::CLI);
 
-  my_AutoS.printCO(AutoStrategizer::CLI);
+  // my_AutoS.printCO(AutoStrategizer::CLI);
 
   // Malloc hosts and targets
   my_AutoS.auto_malloc(1 /** keep original pointers*/);
   my_AutoS.mem_ptr[sourceID] = HstPtrBegin;
   my_AutoS.mem_ptr[targetID] = TgtPtrBegin;
 
+  stop = std::chrono::high_resolution_clock::now();
+  duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to malloc: %f\n", duration.count() / 1000.0);
+  start = std::chrono::high_resolution_clock::now();
+
   // Get dependencies
-  for (auto &a_dep : *(my_AutoS.getDeps())) {
-    printf(
-        "[AS][EXEC:] Orig: %d Dest: %d Size: %zu O_Offs: %zu D_Offs: %zu, Path "
-        "No.: %d\n",
-        a_dep->orig, a_dep->dest, a_dep->size, a_dep->of_s, a_dep->of_d,
-        a_dep->ipth);
-  }
+  // for (auto &a_dep : *(my_AutoS.getDeps())) {
+  //   printf(
+  //       "[AS][EXEC:] Orig: %d Dest: %d Size: %zu O_Offs: %zu D_Offs: %zu,
+  //       Path " "No.: %d\n", a_dep->orig, a_dep->dest, a_dep->size,
+  //       a_dep->of_s, a_dep->of_d, a_dep->ipth);
+  // }
 
   // Executing
   int n_deps;
   n_deps = my_AutoS.getDeps()->size();
 
-  // early return to avoid overhead
-  // if (n_deps == 1)
-  //   return 0;
+  //  early return to avoid overhead
+  if (n_deps == 1)
+    return 0;
 
   for (auto &a_dep : *(my_AutoS.getDeps())) {
     kmpc_task_t_with_privates *memory_task =
@@ -771,13 +813,25 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
     }
   }
 
+  stop = std::chrono::high_resolution_clock::now();
+  duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to execute: %f\n", duration.count() / 1000.0);
+  start = std::chrono::high_resolution_clock::now();
+
   __kmpc_omp_taskwait(NULL, gtid);
 
+  stop = std::chrono::high_resolution_clock::now();
+  duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to wait: %f\n", duration.count() / 1000.0);
+  start = std::chrono::high_resolution_clock::now();
+
   my_AutoS.auto_mfree(1 /* keep original pointers*/);
-  // sleep for 5 seconds sleep this thread
-  // std::this_thread::sleep_for(std::chrono::seconds(2));
-  end = omp_get_wtime();
-  printf("[AS] Time: %f\n", end - start);
+  stop = std::chrono::high_resolution_clock::now();
+  duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  printf("[AS] Time to free: %f\n", duration.count() / 1000.0);
 
   return 1; // != means offload success from AS
 }
@@ -789,8 +843,8 @@ int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
   const bool bypass_as = AsyncInfo.bypass_as;
   if (!bypass_as &&
       useStrategizer(HstPtrBegin, TgtPtrBegin, Size, 0, 2 + RTLDeviceID)) {
-    printf("[AS] Moved data from devicedID %d to %d\n",
-           omp_get_initial_device(), RTLDeviceID);
+    // printf("[AS] Moved data from devicedID %d to %d\n",
+    //        omp_get_initial_device(), RTLDeviceID);
     return OFFLOAD_SUCCESS;
   }
 
@@ -820,8 +874,8 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
   const bool bypass_as = AsyncInfo.bypass_as;
   if (!bypass_as &&
       useStrategizer(TgtPtrBegin, HstPtrBegin, Size, 2 + RTLDeviceID, 0)) {
-    printf("[AS] Moved data form OMP devicedID %d to %d\n", RTLDeviceID,
-           omp_get_initial_device());
+    // printf("[AS] Moved data form OMP devicedID %d to %d\n", RTLDeviceID,
+    //        omp_get_initial_device());
     return OFFLOAD_SUCCESS;
   }
 
@@ -849,8 +903,8 @@ int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
   const bool bypass_as = AsyncInfo.bypass_as;
   if (!bypass_as && useStrategizer(SrcPtr, DstPtr, Size, RTLDeviceID + 2,
                                    DstDev.RTLDeviceID + 2)) {
-    printf("[AS] Moved data form devicedID %d to %d\n", RTLDeviceID,
-           DstDev.RTLDeviceID);
+    // printf("[AS] Moved data form devicedID %d to %d\n", RTLDeviceID,
+    //        DstDev.RTLDeviceID);
     return OFFLOAD_SUCCESS;
   }
 

@@ -4776,9 +4776,7 @@ __kmp_set_thread_affinity_mask_full_tmp(kmp_affin_mask_t *old_mask) {
 // thread's partition, and binds each worker to a thread in their partition.
 // The primary thread's partition should already include its current binding.
 static void __kmp_partition_places(kmp_team_t *team, int update_master_only) {
-  // Do not partition places for the hidden helper team
-  if (KMP_HIDDEN_HELPER_TEAM(team))
-    return;
+
   // Copy the primary thread's place partition to the team struct
   kmp_info_t *master_th = team->t.t_threads[0];
   KMP_DEBUG_ASSERT(master_th != NULL);
@@ -4789,6 +4787,13 @@ static void __kmp_partition_places(kmp_team_t *team, int update_master_only) {
   int num_masks = __kmp_affinity.num_masks;
   team->t.t_first_place = first_place;
   team->t.t_last_place = last_place;
+
+  // partition places for the hidden helper team
+  if (KMP_HIDDEN_HELPER_TEAM(team))
+  {
+    proc_bind = proc_bind_spread;
+    // return;
+  }
 
   KA_TRACE(20, ("__kmp_partition_places: enter: proc_bind = %d T#%d(%d:0) "
                 "bound to place %d partition = [%d,%d]\n",

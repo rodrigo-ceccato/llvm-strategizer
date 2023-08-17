@@ -5,7 +5,7 @@
 #include <cstring>
 
 #ifndef VERBOSE_MODE
-#define VERBOSE_MODE 1
+#define VERBOSE_MODE 0
 #endif
 
 // Macro for output of information, warning and error messages
