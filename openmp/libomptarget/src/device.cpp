@@ -566,6 +566,7 @@ int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
   printf(
       "[AS] omp mem cpy Source ID: %d, destination ID: %d, size (bytes) = %d\n",
       mta.src_device_num, mta.dst_device_num, mta.size * sizeof(int));
+  fflush(stdout); // Will now print everything in the stdout buffer
 
   // TODO: prevent this form triggering auto strategizer
   omp_target_memcpy_no_as(
@@ -626,9 +627,34 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   printf("[AS] Strategizer device id: %d to %d\n", sourceID, targetID);
 
   kmp_int32 gtid = __kmpc_global_thread_num(NULL);
+
+  // Get AS configuration from environment variables: topo and strategy
+  // If not set, defaults to topo_smx and P2P
+  static const char *topo = []() {
+    const char *env = getenv("LIBOMPTARGET_STRATEGIZER_TOPO");
+    if (env) {
+      printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_TOPO set to %s\n", env);
+      return env;
+    }
+    printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_TOPO not set, using "
+           "topo_smx\n");
+    return "topo_smx";
+  }();
+
+  static const char *strategy = []() {
+    const char *env = getenv("LIBOMPTARGET_STRATEGIZER_STRATEGY");
+    if (env) {
+      printf("[AS][WARNING] LIBOMPTARGET_STRATEGIZER_STRATEGY set to %s\n",
+             env);
+      return env;
+    }
+    printf(
+        "[AS][WARNING] LIBOMPTARGET_STRATEGIZER_STRATEGY not set, using P2P\n");
+    return "P2P";
+  }();
+
   // Set Architecture
-  AutoStrategizer::AutoStrategizer my_AutoS("topo_dgx");
-  // AutoStrategizer::AutoStrategizer my_AutoS("topo_smx");
+  AutoStrategizer::AutoStrategizer my_AutoS(topo);
 
   // Print topology
   my_AutoS.printTopo(AutoStrategizer::CLI);
@@ -646,9 +672,19 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   my_CoP.add_destination(targetID);
   my_CoP.set_size(Size / sizeof(int)); // AS lib uses num of elements here
   my_CoP.set_coop(AutoStrategizer::D2D);
-  my_CoP.set_mhtd(AutoStrategizer::P2P); // Peer to Peer
-  // my_CoP.set_mhtd(AutoStrategizer::MXF); // Max Flow
-  // my_CoP.set_mhtd(AutoStrategizer::DVT); // Distant Vector
+
+  // Set strategy
+  if (!strcmp(strategy, "P2P"))
+    my_CoP.set_mhtd(AutoStrategizer::P2P); // Peer to Peer
+  else if (!strcmp(strategy, "MXF"))
+    my_CoP.set_mhtd(AutoStrategizer::MXF); // Max Flow
+  else if (!strcmp(strategy, "DVT"))
+    my_CoP.set_mhtd(AutoStrategizer::DVT); // Distant Vector
+  else {
+    printf("[AS][ERROR] Invalid strategy: %s. Options are P2P, MXF, DVT.\n",
+           strategy);
+    exit(1);
+  }
 
   my_AutoS.addCO(&my_CoP);
 
@@ -738,6 +774,8 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   __kmpc_omp_taskwait(NULL, gtid);
 
   my_AutoS.auto_mfree(1 /* keep original pointers*/);
+  // sleep for 5 seconds sleep this thread
+  // std::this_thread::sleep_for(std::chrono::seconds(2));
   end = omp_get_wtime();
   printf("[AS] Time: %f\n", end - start);
 
