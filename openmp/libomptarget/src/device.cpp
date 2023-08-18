@@ -556,7 +556,7 @@ struct kmpc_task_t_with_privates {
 
 // Execute a memory operation for the Strategizer.
 int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
-
+  int cpu, status;
   // auto local_gtid = __kmpc_global_thread_num(NULL);
   // printf("[AS] Executing memory task kernel with thread: %d\n", local_gtid,
   //        task->mem_task_args.size);
@@ -568,7 +568,9 @@ int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
   //     %d\n", mta.src_device_num, mta.dst_device_num, mta.size * sizeof(int));
 
   // TODO: prevent this form triggering auto strategizer
-  auto start = std::chrono::high_resolution_clock::now();
+  // auto start = std::chrono::high_resolution_clock::now();
+
+
   omp_target_memcpy_no_as(
       mta.dst,                      // mem_ptr[a_dep->dest],      // dst
       mta.src,                      // mem_ptr[a_dep->orig],      // src
@@ -579,11 +581,13 @@ int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
       mta.src_device_num, // a_dep->o_id                // src_device_num
       true                // Bypass the auto strategizer
   );
-  auto stop = std::chrono::high_resolution_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to execute memory task kernel: %f\n",
-         duration.count() / 1000.0);
+
+
+  // auto stop = std::chrono::high_resolution_clock::now();
+  // auto duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to execute memory task kernel: %f\n",
+  //        duration.count() / 1000.0);
 
   return 0;
 }
@@ -591,7 +595,8 @@ int memory_task_kernel(kmp_int32 gtid, kmpc_task_t_with_privates *task) {
 int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
                    int sourceID, int targetID) {
 
-  auto start = std::chrono::high_resolution_clock::now();
+  // auto start = std::chrono::high_resolution_clock::now();
+
   // If environment variable LIBOMPTARGET_USE_STRATEGIZER is not set, return
   // immediately.
   static const bool strategizerEnabled = []() {
@@ -660,21 +665,21 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
     return "P2P";
   }();
 
-  auto stop = std::chrono::high_resolution_clock::now();
-  auto duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to get AS configuration: %f\n", duration.count() / 1000.0);
-  start = std::chrono::high_resolution_clock::now();
+  // auto stop = std::chrono::high_resolution_clock::now();
+  // auto duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to get AS configuration: %f\n", duration.count() /
+  // 1000.0); start = std::chrono::high_resolution_clock::now();
 
   // Set Architecture
   AutoStrategizer::AutoStrategizer my_AutoS(topo);
 
-  stop = std::chrono::high_resolution_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to set architecture: %f\n", duration.count() / 1000.0);
+  // stop = std::chrono::high_resolution_clock::now();
+  // duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to set architecture: %f\n", duration.count() / 1000.0);
 
-  start = std::chrono::high_resolution_clock::now();
+  // start = std::chrono::high_resolution_clock::now();
 
   // Print topology
   // my_AutoS.printTopo(AutoStrategizer::CLI);
@@ -682,11 +687,11 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   void **mem_ptr;
   mem_ptr = my_AutoS.get_memptr();
 
-  stop = std::chrono::high_resolution_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to get mem ptr: %f\n", duration.count() / 1000.0);
-  start = std::chrono::high_resolution_clock::now();
+  // stop = std::chrono::high_resolution_clock::now();
+  // duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to get mem ptr: %f\n", duration.count() / 1000.0);
+  // start = std::chrono::high_resolution_clock::now();
 
   // Define Operation
   AutoStrategizer::CollectiveOperation my_CoP;
@@ -699,11 +704,11 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   my_CoP.set_size(Size / sizeof(int)); // AS lib uses num of elements here
   my_CoP.set_coop(AutoStrategizer::D2D);
 
-  stop = std::chrono::high_resolution_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to set operation: %f\n", duration.count() / 1000.0);
-  start = std::chrono::high_resolution_clock::now();
+  // stop = std::chrono::high_resolution_clock::now();
+  // duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to set operation: %f\n", duration.count() / 1000.0);
+  // start = std::chrono::high_resolution_clock::now();
 
   // Set strategy
   if (!strcmp(strategy, "P2P"))
@@ -719,11 +724,12 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   }
 
   my_AutoS.addCO(&my_CoP);
-  stop = std::chrono::high_resolution_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to set strategy: %f\n", duration.count() / 1000.0);
-  start = std::chrono::high_resolution_clock::now();
+
+  // stop = std::chrono::high_resolution_clock::now();
+  // duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to set strategy: %f\n", duration.count() / 1000.0);
+  // start = std::chrono::high_resolution_clock::now();
 
   // my_AutoS.printTopo_cpy(AutoStrategizer::CLI);
 
@@ -734,11 +740,11 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
   my_AutoS.mem_ptr[sourceID] = HstPtrBegin;
   my_AutoS.mem_ptr[targetID] = TgtPtrBegin;
 
-  stop = std::chrono::high_resolution_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to malloc: %f\n", duration.count() / 1000.0);
-  start = std::chrono::high_resolution_clock::now();
+  // stop = std::chrono::high_resolution_clock::now();
+  // duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to malloc: %f\n", duration.count() / 1000.0);
+  // start = std::chrono::high_resolution_clock::now();
 
   // Get dependencies
   // for (auto &a_dep : *(my_AutoS.getDeps())) {
@@ -813,25 +819,26 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
     }
   }
 
-  stop = std::chrono::high_resolution_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to execute: %f\n", duration.count() / 1000.0);
-  start = std::chrono::high_resolution_clock::now();
+  // stop = std::chrono::high_resolution_clock::now();
+  // duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to execute: %f\n", duration.count() / 1000.0);
+  // start = std::chrono::high_resolution_clock::now();
 
   __kmpc_omp_taskwait(NULL, gtid);
 
-  stop = std::chrono::high_resolution_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to wait: %f\n", duration.count() / 1000.0);
-  start = std::chrono::high_resolution_clock::now();
+  // stop = std::chrono::high_resolution_clock::now();
+  // duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to wait: %f\n", duration.count() / 1000.0);
+  // start = std::chrono::high_resolution_clock::now();
 
   my_AutoS.auto_mfree(1 /* keep original pointers*/);
-  stop = std::chrono::high_resolution_clock::now();
-  duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-  printf("[AS] Time to free: %f\n", duration.count() / 1000.0);
+
+  // stop = std::chrono::high_resolution_clock::now();
+  // duration =
+  //     std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+  // printf("[AS] Time to free: %f\n", duration.count() / 1000.0);
 
   return 1; // != means offload success from AS
 }

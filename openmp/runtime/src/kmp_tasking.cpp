@@ -1636,8 +1636,10 @@ kmp_task_t *__kmpc_omp_target_task_alloc(ident_t *loc_ref, kmp_int32 gtid,
   // target task is untied defined in the specification
   input_flags.tiedness = TASK_UNTIED;
 
-  if (__kmp_enable_hidden_helper)
+  if (__kmp_enable_hidden_helper) {
     input_flags.hidden_helper = TRUE;
+    // input_flags.tiedness = TASK_TIED; // TODO: should we tie?
+  }
 
   return __kmpc_omp_task_alloc(loc_ref, gtid, flags, sizeof_kmp_task_t,
                                sizeof_shareds, task_entry);
