@@ -624,11 +624,11 @@ int useStrategizer(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
     // printf(
     //     "[AS][WARNING] LIBOMPTARGET_STRATEGIZER_MIN_SIZE not set, using
     //     1MB\n");
-    return (size_t)1 << 20;
+    return (size_t)1UL << 20;
   }();
 
   if (Size < minSize) {
-    // printf("[AS] Size is less than threshold, not using Strategizer\n");
+    printf("[AS] Size %d is less than threshold %d, not using Strategizer\n", Size, minSize);
     return 0;
   }
 
