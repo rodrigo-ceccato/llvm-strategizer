@@ -12,7 +12,7 @@
 
 #include "device.h"
 #include "StrategizerInterface.h"
-#include "autoStrategizer.hpp"
+#include "autoStrategyzer.hpp"
 #include "omptarget.h"
 #include "private.h"
 #include "rtl.h"

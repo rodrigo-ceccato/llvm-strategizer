@@ -13,6 +13,14 @@
 libomptarget_say("Building offloading runtime library libomptarget.")
 message("Looking for header in...... ${CMAKE_CURRENT_SOURCE_DIR}/../DeviceRTL/include")
 
+#TODO: workaroun for now as Varible isnot being passed here
+set(AUTO_STRATEGIZER_LOCATION "/home/rdefreitas/llvm/AutoStrategyzer")
+
+if (NOT AUTO_STRATEGIZER_LOCATION)
+  message(FATAL_ERROR "This version of LLVM requires the AutoStrategizer library to be built. Please set AUTO_STRATEGIZER_LOCATION to the location of the AutoStrategizer library.")
+
+endif()
+
 add_llvm_library(omptarget
   SHARED
 
@@ -24,7 +32,7 @@ add_llvm_library(omptarget
   ompt_callback.cpp
   rtl.cpp
   LegacyAPI.cpp
-  autoStrategizer.cpp
+  ${AUTO_STRATEGIZER_LOCATION}/src/autoStrategyzer.cpp
 
   ADDITIONAL_HEADER_DIRS
 
@@ -43,6 +51,12 @@ add_llvm_library(omptarget
 target_link_libraries(omptarget PRIVATE numa)
 
 target_include_directories(omptarget PRIVATE ${LIBOMPTARGET_INCLUDE_DIR} 
+
+
+# include AutoStrategyzer headers
+${AUTO_STRATEGIZER_LOCATION}/include
+
+
 # include DeviceRTL headers
 ${CMAKE_CURRENT_SOURCE_DIR}/../DeviceRTL/include
 
