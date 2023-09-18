@@ -14,10 +14,14 @@ libomptarget_say("Building offloading runtime library libomptarget.")
 message("Looking for header in...... ${CMAKE_CURRENT_SOURCE_DIR}/../DeviceRTL/include")
 
 #TODO: workaroun for now as Varible isnot being passed here
-set(AUTO_STRATEGIZER_LOCATION "/home/rdefreitas/llvm/AutoStrategyzer")
+# set(AUTO_STRATEGIZER_LOCATION "/home/rdefreitas/llvm/AutoStrategyzer")
+set(AUTO_STRATEGIZER_LOCATION "" CACHE STRING
+  "Path to Auto Strategyzer library location.")
 
-if (NOT AUTO_STRATEGIZER_LOCATION)
+if (NOT DEFINED AUTO_STRATEGIZER_LOCATION)
   message(FATAL_ERROR "This version of LLVM requires the AutoStrategizer library to be built. Please set AUTO_STRATEGIZER_LOCATION to the location of the AutoStrategizer library.")
+
+message("[AS] Using source ${AUTO_STRATEGIZER_LOCATION} for Auto Strategyzer.")
 
 endif()
 
