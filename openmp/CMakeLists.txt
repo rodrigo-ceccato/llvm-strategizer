@@ -2,11 +2,6 @@ cmake_minimum_required(VERSION 3.13.4)
 
 set(LLVM_COMMON_CMAKE_UTILS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake)
 
-if (AUTO_STRATEGIZER_LOCATION)
-  set(OPENMP_STANDALONE_BUILD TRUE)
-
-endif()
-
 # Add path for custom modules
 list(INSERT CMAKE_MODULE_PATH 0
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake"

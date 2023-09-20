@@ -223,6 +223,16 @@ function(runtime_default_target)
     set(LLVM_ENABLE_PER_TARGET_RUNTIME_DIR_default OFF)
   endif()
 
+  # Check for the AutoStrategizer library path
+  if (NOT DEFINED AUTO_STRATEGIZER_LOCATION)
+    message(FATAL_ERROR "This version of LLVM requires the AutoStrategizer library to be built. Please set AUTO_STRATEGIZER_LOCATION to the location of the AutoStrategizer library.")
+  endif()
+
+  if(NOT IS_ABSOLUTE ${AUTO_STRATEGIZER_LOCATION})
+      set(AUTO_STRATEGIZER_LOCATION "${CMAKE_SOURCE_DIR}/../../${AUTO_STRATEGIZER_LOCATION}")
+      message(STATUS "Setting AUTO_STRATEGIZER_LOCATION to ${AUTO_STRATEGIZER_LOCATION}")
+  endif()
+
   llvm_ExternalProject_Add(runtimes
                            ${CMAKE_CURRENT_SOURCE_DIR}/../../runtimes
                            DEPENDS ${ARG_DEPENDS}
